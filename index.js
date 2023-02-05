@@ -1,41 +1,60 @@
-import express from "express";
-import bodyParser from "body-parser";
+import express from 'express'
+import bodyParser from 'body-parser'
+import pgk from 'pg'
+
 const app = express();
-
-const users = [];
-
-// parse application/x-www-form-urlencoded
-app.use(bodyParser.urlencoded({extended: false}));
-
-// parse application/json
 app.use(bodyParser.json());
 
-app.get("/api/data", (req, res) => {
-  res.json({users});
+const {Client} = pgk
+const client = new Client({
+  user: "noahboehringer",
+  host: "localhost",
+  database: "noahboehringer",
+  port: 5432,
 });
 
-app.post("/api/data", (req, res) => {
+client.connect((err) => {
+  if (err) {
+    console.error("Verbindung fehlgeschlagen", err.stack);
+  } else {
+    console.log("Verbindung erfolgreich");
+  }
+});
+
+app.post("/api/users", async (req, res) => {
   const {email, password} = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({message: "Email and password required"});
+    return res.status(400).json({
+      error: "Email and password are required",
+    });
   }
-
-  users.push({email, password});
-  res.json({message: `User with email ${email} added`});
+  try {
+    const {email, password} = req.body;
+    const result = await client.query('INSERT INTO "users" ("email", "password") VALUES ($1, $2)', [email, password]);
+    res.send("Benutzer erfolgreich gespeichert");
+  } catch (err) {
+    console.error("Fehler beim Speichern des Benutzers in der Datenbank", err.stack);
+    res.status(500).send("Fehler beim Speichern des Benutzers in der Datenbank");
+  }
 });
 
-app.put("/api/data/:index", (req, res) => {
-  const {index} = req.params;
-  const {email, password} = req.body;
 
-  if (index >= users.length) {
-    return res.status(400).json({message: "Index out of range"});
-  }
+app.get("/api/users", (req, res) => {
+  const sql = `SELECT * FROM users`;
 
-  users[index] = {email, password};
-  res.json({message: `User at index ${index} updated with email ${email}`});
+  client.query(sql, (err, result) => {
+    if (err) {
+      return res.status(500).json({
+        error: "Error fetching users from database",
+      });
+    }
+
+    return res.json(result.rows);
+  });
 });
 
 const port = process.env.PORT || 4567;
-app.listen(port, () => console.log(`API running on port ${port}`));
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
